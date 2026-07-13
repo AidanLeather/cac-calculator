@@ -46,6 +46,9 @@ function complete(dataset, config) {
   if (config.spend) dataset.spend = config.spend;
   else if (config.monthly) { dataset.spend = dataset.spend || {}; dataset.spend[config.focusChannel || dataset.meta.focusChannel] = config.monthly; }
   if (config.costAssumptions) dataset.config.costAssumptions = config.costAssumptions;
+  // optional per-channel overhead seed (monthly agency & people), so several
+  // channels arrive with a full cost build-up, not just the focus channel.
+  if (config.costByChannel) dataset.config.costByChannel = config.costByChannel;
   return dataset;
 }
 
