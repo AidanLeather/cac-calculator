@@ -1,0 +1,478 @@
+<style>
+  /* Personalised CAC explorer - monochrome, DARK MODE ONLY. There is
+     deliberately no light palette and no theme-following: the explorer is
+     always dark, whatever the viewer's system/theme preference.
+     Source is deliberately ASCII-only: every special glyph (pound, divide,
+     times, dash) is produced at runtime via String.fromCharCode, so the page
+     can never mojibake regardless of how it is served. */
+  /* Colours are neutral OKLCH tokens - pure greys, no blue tint. */
+  /* Force the whole hosting page dark too, so the surface behind the explorer
+     never renders white when the viewer prefers light. */
+  :root { color-scheme: dark; background: oklch(0.162 0 0); }
+  body { background: oklch(0.162 0 0); }
+  .aw-explorer {
+    color-scheme: dark;
+    --bg: oklch(0.162 0 0); --panel: oklch(0.196 0 0);
+    --line: oklch(1 0 0 / 0.10); --line-soft: oklch(1 0 0 / 0.055);
+    --ink: oklch(0.95 0 0); --ink-2: oklch(0.84 0 0); --ink-3: oklch(0.60 0 0);
+    --pill: oklch(0.285 0 0); --fill: oklch(0.95 0 0);
+    --radius: 10px; --radius-sm: 6px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: var(--ink-2); max-width: 720px; margin: 0 auto; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    /* Paint our own surface so the explorer is always self-consistent, whatever
+       colour the host page happens to be behind it. */
+    background: var(--bg); padding: 24px; border-radius: var(--radius);
+  }
+  .aw-explorer * { box-sizing: border-box; }
+  .aw-eyebrow { font-size: 11px; letter-spacing: .04em; color: var(--ink-3); margin-bottom: 6px; }
+  .aw-title { font-size: 19px; font-weight: 600; color: var(--ink); margin: 0 0 6px; letter-spacing: -.01em; }
+  .aw-sub { font-size: 14px; color: var(--ink-3); margin: 0 0 20px; }
+  .aw-controls { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+  .ctrl-row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 12px; }
+  .ctrl-label { font-size: 12px; color: var(--ink-3); }
+  .segmented { display: flex; flex-wrap: wrap; gap: 4px; background: var(--bg); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 3px; }
+  .seg-btn { flex: 1 1 auto; border: 0; background: transparent; color: var(--ink-3); font: inherit; font-size: 12.5px;
+    padding: 6px 10px; border-radius: 4px; cursor: pointer; white-space: nowrap; transition: background .15s, color .15s; }
+  .seg-btn:hover { color: var(--ink-2); }
+  .seg-btn.is-active { background: var(--pill); color: var(--ink); }
+  /* dim disabled labels with COLOUR, not opacity - opacity would also fade the
+     tooltip pseudo-element and make it unreadable */
+  .seg-btn:disabled { color: color-mix(in oklch, var(--ink-3) 55%, transparent); cursor: not-allowed; }
+  /* hover tooltips explaining each control (rules, cost boundaries, timing) */
+  .seg-btn[data-tip] { position: relative; }
+  .seg-btn[data-tip]:hover::after, .seg-btn[data-tip]:focus-visible::after {
+    content: attr(data-tip); position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
+    width: max-content; max-width: 230px; padding: 7px 10px; text-align: left; white-space: normal;
+    background: var(--panel); color: var(--ink-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    font-size: 12px; line-height: 1.45; font-weight: 400; z-index: 6; pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .seg-btn[data-tip]:hover::before, .seg-btn[data-tip]:focus-visible::before {
+    content: ""; position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: var(--line); z-index: 6; pointer-events: none; }
+  .cac-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; margin-bottom: 18px; }
+  .cac-label { font-size: 12px; color: var(--ink-3); margin-bottom: 4px; }
+  .cac-num { font-size: 44px; font-weight: 600; color: var(--ink); letter-spacing: -.02em; line-height: 1.05; }
+  .cac-num .cur { font-size: 26px; font-weight: 500; color: var(--ink-3); margin-right: 1px; }
+  .cac-formula { font-size: 13px; color: var(--ink-3); margin-top: 6px; }
+  .cac-formula strong { color: var(--ink-2); font-weight: 600; }
+  .range { margin: 20px 0 6px; }
+  .range-track { position: relative; height: 6px; background: var(--bg); border: 1px solid var(--line-soft); border-radius: 999px; cursor: pointer; outline: none; }
+  .range-track:focus-visible { box-shadow: 0 0 0 3px rgba(255,255,255,.18); }
+  .range-fill { position: absolute; top: 0; left: 0; height: 100%; background: var(--fill); border-radius: 999px; opacity: .35; }
+  .range-marker { position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%; background: var(--fill); border: 2px solid var(--panel); transform: translate(-50%,-50%); transition: left .12s ease; }
+  .range-track.is-dragging .range-marker { transition: none; }
+  .range-ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 8px; }
+  .cac-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 20px; }
+  .cac-stat { background: var(--bg); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 10px 12px; }
+  .cs-label { font-size: 11px; color: var(--ink-3); margin-bottom: 2px; }
+  .cs-val { font-size: 16px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .chan-head-label { font-size: 12px; color: var(--ink-3); margin: 0 0 8px; }
+  /* flex column so rows are reordered via the CSS `order` property - the DOM
+     nodes never move, which avoids the focus-flicker you get from re-appending
+     the button you just clicked. */
+  .chan-list { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
+  .chan-head, .chan-row { display: grid; grid-template-columns: 1.3fr 1.2fr .6fr .8fr .9fr; align-items: center; gap: 10px; padding: 9px 14px; }
+  .chan-head { font-size: 11px; color: var(--ink-3); border-bottom: 1px solid var(--line-soft); order: -1; }
+  .chan-row { border: 0; width: 100%; text-align: left; background: transparent; font: inherit; color: inherit;
+    border-bottom: 1px solid var(--line-soft); font-size: 13px; cursor: pointer; transition: background .12s; }
+  .chan-row.is-vlast { border-bottom: 0; }
+  /* hover must NOT out-specify .is-focus, or the focused row shows the faint
+     hover bg while hovered and pops to the solid bg on mouse-out (the "flash") */
+  .chan-row:not(.is-focus):hover { background: rgba(255,255,255,.04); }
+  .chan-row.is-focus { background: var(--pill); }
+  .chan-row:focus-visible { outline: none; box-shadow: inset 0 0 0 2px rgba(255,255,255,.22); }
+  /* channels with no paid media: still clickable, but faded and sunk to the
+     bottom - they show credit only, so people are pushed to the paid ones */
+  .chan-row.is-secondary { opacity: .5; }
+  .chan-row.is-secondary:hover { opacity: .78; }
+  .chan-row.is-secondary.is-focus { opacity: 1; }
+  .chan-row.is-nospend { border-top: 1px solid var(--line-soft); }
+  .chan-name { color: var(--ink-2); display: flex; align-items: center; gap: 7px; }
+  .chan-row.is-focus .chan-name { color: var(--ink); font-weight: 600; }
+  .focus-dot { width: 6px; height: 6px; border-radius: 50%; background: transparent; border: 1.5px solid var(--ink-3); flex: none; transition: background .12s, border-color .12s; }
+  .chan-row.is-focus .focus-dot { background: var(--fill); border-color: var(--fill); }
+  .chan-track { height: 5px; background: var(--bg); border-radius: 999px; overflow: hidden; }
+  .chan-fill { height: 100%; background: var(--fill); opacity: .5; border-radius: 999px; transition: width .3s ease; }
+  .chan-row.is-focus .chan-fill { opacity: .8; }
+  .chan-cust, .chan-rev { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+  .chan-cac { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
+  .chan-cac.na { color: var(--ink-3); font-weight: 400; }
+  .r { text-align: right; }
+  /* editable per-channel cost box */
+  .cost-editor { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 18px; }
+  .ce-head { font-size: 12px; color: var(--ink-3); margin-bottom: 10px; }
+  .ce-head b { color: var(--ink); font-weight: 600; }
+  .ce-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .ce-field { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--ink-3); }
+  .ce-input { display: flex; align-items: center; gap: 4px; background: var(--bg); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 7px 9px; }
+  .ce-input .ce-cur { color: var(--ink-3); font-size: 13px; }
+  .ce-input input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 14px; font-variant-numeric: tabular-nums; outline: none; -moz-appearance: textfield; }
+  .ce-input input::-webkit-outer-spin-button, .ce-input input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .ce-field.is-readonly .ce-input { opacity: .7; }
+  .ce-field.is-readonly .ce-input input { color: var(--ink-3); }
+  .ce-note { font-size: 11.5px; color: var(--ink-3); margin: 9px 0 0; }
+  .chan-hint { font-size: 12px; color: var(--ink-3); margin: 8px 0 0; }
+  .aw-note { font-size: 12.5px; color: var(--ink-3); margin: 14px 0 0; }
+  .aw-caveats { margin-top: 14px; font-size: 12.5px; color: var(--ink-3); }
+  .aw-caveats summary { cursor: pointer; color: var(--ink-2); }
+  .aw-caveats ul { margin: 8px 0 0; padding-left: 18px; }
+  .aw-caveats li { margin: 3px 0; }
+</style>
+
+<div class="aw-explorer">
+  <div class="aw-head">
+    <div class="aw-eyebrow">Attribution explorer</div>
+    <h2 class="aw-title" data-title></h2>
+    <p class="aw-sub" data-sub></p>
+  </div>
+  <div class="aw-controls" data-controls></div>
+  <div class="cac-panel">
+    <div class="cac-label" data-cac-label></div>
+    <div class="cac-num" data-num></div>
+    <div class="cac-formula" data-formula></div>
+    <div class="range">
+      <div class="range-track" data-track><div class="range-fill" data-fill></div><div class="range-marker" data-marker></div></div>
+      <div class="range-ticks"><span data-tick-min></span><span>defensible range</span><span data-tick-max></span></div>
+    </div>
+    <div class="cac-stats">
+      <div class="cac-stat"><div class="cs-label">Spend</div><div class="cs-val" data-stat-spend></div></div>
+      <div class="cac-stat"><div class="cs-label">Customers</div><div class="cs-val" data-stat-cust></div></div>
+      <div class="cac-stat"><div class="cs-label">Revenue</div><div class="cs-val" data-stat-rev></div></div>
+    </div>
+  </div>
+  <div class="cost-editor">
+    <div class="ce-head">Cost for <b data-ce-ch></b> <span data-ce-sub>per month - edit to see the CAC move</span></div>
+    <div class="ce-grid">
+      <label class="ce-field">Media (ad spend)
+        <div class="ce-input"><span class="ce-cur" data-ce-cur></span><input type="number" min="0" step="500" data-ce="media" inputmode="numeric" /></div>
+      </label>
+      <label class="ce-field">Agency &amp; tooling
+        <div class="ce-input"><span class="ce-cur" data-ce-cur></span><input type="number" min="0" step="500" data-ce="agency" inputmode="numeric" /></div>
+      </label>
+      <label class="ce-field">People (salaries)
+        <div class="ce-input"><span class="ce-cur" data-ce-cur></span><input type="number" min="0" step="500" data-ce="people" inputmode="numeric" /></div>
+      </label>
+    </div>
+    <p class="ce-note" data-ce-note></p>
+  </div>
+  <p class="chan-head-label">Credit by channel (under the current rule)</p>
+  <div class="chan-list" data-chan></div>
+  <p class="chan-hint" data-hint></p>
+  <p class="aw-note" data-note></p>
+  <details class="aw-caveats"><summary data-cav-summary></summary><div data-caveats></div></details>
+</div>
+
+<script>/*{{ENGINE}}*/</script>
+<script>
+(function () {
+  "use strict";
+  var DATA = /*{{DATA}}*/;
+  var ATTR = window.ATTR;
+  var root = document.querySelector(".aw-explorer");
+
+  // Every non-ASCII glyph produced at runtime, so the source stays pure ASCII.
+  var G = { pound: 163, euro: 8364, dollar: 36, div: 247, times: 215, dash: 8212 };
+  var C = {}; Object.keys(G).forEach(function (k) { C[k] = String.fromCharCode(G[k]); });
+  var DASH = " " + C.dash + " ";
+
+  var CUR = DATA.meta.currency === "USD" ? C.dollar : DATA.meta.currency === "EUR" ? C.euro : C.pound;
+  var money = function (n) { return CUR + Math.round(n).toLocaleString("en-GB"); };
+  var moneyK = function (n) { return CUR + (n / 1000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, "") + "k"; };
+  var num1 = function (n) { var r = Math.round(n * 10) / 10; return r.toLocaleString("en-GB", { maximumFractionDigits: 1 }); };
+  var el = function (t, c, h) { var e = document.createElement(t); if (c) e.className = c; if (h != null) e.innerHTML = h; return e; };
+
+  var METHOD_TIP = {
+    first: "100% of the credit to the first channel the deal touched.",
+    last: "100% to the last channel before the deal closed.",
+    linear: "Credit split evenly across every touch.",
+    position: "40% first, 40% last, 20% shared across the middle.",
+    any: "Every channel on the deal gets full credit - counts above the deal total.",
+    sole: "Counts only deals where it was the only channel.",
+  };
+  var BOUNDARY = [
+    { key: "media_only", label: "Media only", tip: "Just the ad spend on this channel. Clean, but almost certainly an undercount." },
+    { key: "plus_agency_tooling", label: "+ Agency & tooling", tip: "Ad spend plus the agency retainer and tools behind it, allocated to this channel." },
+    { key: "fully_loaded", label: "Fully loaded", tip: "The above plus people - the share of a person's time spent on this channel. Most complete, least certain." },
+  ];
+  var TIMING = { naive: "Same-period", lag: "Lag-adjusted" };
+  var TIMING_TIP = {
+    naive: "This year's spend over this year's closes. Simple, but bills recent spend for customers it hasn't produced yet.",
+    lag: "Drops the last few months of spend, since deals take time to close. Rougher, biased the other way.",
+  };
+  var BLABEL = { media_only: "media-only", plus_agency_tooling: "+ agency & tooling", fully_loaded: "fully-loaded" };
+
+  // state: focus channel selectable; per-channel costs are editable, so the band
+  // is recomputed whenever the focus channel or a cost input changes.
+  var state = {
+    focusChannel: DATA.meta.focusChannel || DATA.meta.channels[0],
+    method: DATA.config.methods[0], boundary: "media_only", timing: DATA.config.timings[0],
+  };
+  var MONTHS = DATA.meta.months || 12; // analysis window: min(12, months the data spans)
+  var BOUNDARY_KEYS = ["media_only", "plus_agency_tooling", "fully_loaded"];
+
+  // media spend is per-channel, held as a MONTHLY rate in editCost[ch].media and
+  // editable here. It seeds from the export's spend (mean of the months on record).
+  function spendFor(ch) { return (DATA.spend && DATA.spend[ch]) || []; }
+  function dataMediaMonthly(ch) { var s = spendFor(ch); if (!s.length) return 0; var t = 0; for (var i = 0; i < s.length; i++) t += (s[i].focus_media || 0); return t / s.length; }
+  function mediaMonthly(ch) { return (editCost[ch] && editCost[ch].media) || 0; } // live, editable
+  // the window is N = MONTHS months, each carrying the monthly rate, so lag-timing
+  // still drops a proportional slice.
+  function monthlyFor(ch) { var m = mediaMonthly(ch), a = []; for (var i = 0; i < MONTHS; i++) a.push({ focus_media: m }); return a; }
+
+  // Editable overhead per channel, as MONTHLY rates: agency & tooling, and people.
+  // A channel can have a cost with ZERO media (e.g. email run by one person), so
+  // this is what gives it a real CAC. Only the focus channel inherits the build's
+  // cost assumptions by default; every other channel starts at zero overhead
+  // (we don't assume organic/referral carry agency or staff cost) until edited.
+  function assumptionsToMonthly(A) {
+    A = A || {};
+    return {
+      agency: (A.retainerPerMonth || 0) * (A.retainerShare || 0) + (A.toolingPerMonth || 0) * (A.toolingShare || 0),
+      people: (A.staffPerMonth || 0) * (A.staffShare || 0),
+    };
+  }
+  var editCost = {};
+  DATA.meta.channels.forEach(function (ch) {
+    var byCh = (DATA.config.costByChannel || {})[ch];
+    var overhead = byCh ? { agency: byCh.agency || 0, people: byCh.people || 0 }
+      : (ch === DATA.meta.focusChannel ? assumptionsToMonthly(DATA.config.costAssumptions) : { agency: 0, people: 0 });
+    overhead.media = dataMediaMonthly(ch); // monthly media from the export - now editable
+    editCost[ch] = overhead;
+  });
+
+  // A channel's editable monthly overhead maps straight onto the engine's per-month
+  // assumptions (agency -> retainer at full share; people -> staff at full share).
+  function assumptionsFor(ch) {
+    var c = editCost[ch];
+    return { retainerPerMonth: c.agency, retainerShare: 1, toolingPerMonth: 0, toolingShare: 0, staffPerMonth: c.people, staffShare: 1 };
+  }
+  function boundariesFor(ch, timing) { return ATTR.costBoundaries(monthlyFor(ch), DATA.deals, timing, assumptionsFor(ch)); }
+  function customersFor(ch, method) { return ATTR.channelTotals(DATA.deals, method, DATA.meta.channels).customers[ch] || 0; }
+  function cacFor(ch, method, boundary, timing) {
+    var cost = boundariesFor(ch, timing)[boundary], cust = customersFor(ch, method);
+    return (cust > 0 && cost > 0) ? cost / cust : null; // cost 0 (media-only for an unpaid channel) is n/a, not 0
+  }
+  function comboList(ch) {
+    var out = [];
+    DATA.config.timings.forEach(function (t) {
+      BOUNDARY_KEYS.forEach(function (b) {
+        DATA.config.methods.forEach(function (m) {
+          var c = cacFor(ch, m, b, t); if (c != null) out.push({ method: m, boundary: b, timing: t, cac: c });
+        });
+      });
+    });
+    out.sort(function (a, b) { return a.cac - b.cac; });
+    return out;
+  }
+  function hasCost(ch) { return boundariesFor(ch, "naive").fully_loaded > 0; }
+  function cfg() {
+    return { channels: DATA.meta.channels, focusChannel: state.focusChannel,
+      methods: DATA.config.methods, timings: DATA.config.timings, assumptions: assumptionsFor(state.focusChannel) };
+  }
+
+  var combos, BAND, computable;
+  function recomputeBand() {
+    combos = comboList(state.focusChannel);
+    computable = combos.length > 0;
+    BAND = { min: computable ? combos[0].cac : 0, max: computable ? combos[combos.length - 1].cac : 0 };
+    root.querySelector("[data-title]").textContent = "What a customer from " + state.focusChannel + " costs";
+    root.querySelector("[data-cac-label]").textContent = state.focusChannel + " CAC";
+    if (computable) {
+      root.querySelector("[data-sub]").textContent = "Same " + DATA.meta.n_deals + " deals, every figure computed live. The choices below move it from " + money(BAND.min) + " to " + money(BAND.max) + ".";
+      root.querySelector("[data-tick-min]").textContent = money(BAND.min);
+      root.querySelector("[data-tick-max]").textContent = money(BAND.max);
+      track.setAttribute("aria-valuemin", String(Math.round(BAND.min)));
+      track.setAttribute("aria-valuemax", String(Math.round(BAND.max)));
+      track.removeAttribute("aria-disabled"); track.tabIndex = 0;
+    } else {
+      root.querySelector("[data-sub]").textContent = "No cost on record for " + state.focusChannel + " yet - it still shows its share of credit below. Add its media, or a person/tool cost, in the cost box and it gets a CAC.";
+      root.querySelector("[data-tick-min]").textContent = "n/a";
+      root.querySelector("[data-tick-max]").textContent = "n/a";
+      track.setAttribute("aria-disabled", "true"); track.tabIndex = -1;
+    }
+  }
+  var bandPct = function (c) { return BAND.max === BAND.min ? 50 : Math.max(0, Math.min(100, (c - BAND.min) / (BAND.max - BAND.min) * 100)); };
+
+  root.querySelector("[data-cav-summary]").textContent = "How this number was built (and what it can't see)";
+
+  // controls
+  var controls = root.querySelector("[data-controls]");
+  function segmented(items, activeKey, onPick) {
+    var wrap = el("div", "segmented");
+    items.forEach(function (it) {
+      var b = el("button", "seg-btn", it.label);
+      b.type = "button"; b.dataset.key = it.key;
+      var tip = it.disabled ? it.reason : it.tip;
+      if (tip) { b.dataset.tip = tip; b.title = tip; } // data-tip = styled tooltip; title = fallback
+      if (it.disabled) b.disabled = true;
+      b.classList.toggle("is-active", it.key === activeKey);
+      if (!it.disabled) b.addEventListener("click", function () {
+        wrap.querySelectorAll(".seg-btn").forEach(function (x) { x.classList.toggle("is-active", x === b); });
+        onPick(it.key);
+      });
+      wrap.appendChild(b);
+    });
+    return wrap;
+  }
+  function ctrlRow(label, seg) { var r = el("div", "ctrl-row"); r.appendChild(el("span", "ctrl-label", label)); r.appendChild(seg); return r; }
+
+  var ruleItems = DATA.config.methods.map(function (k) { return { key: k, label: ATTR.METHODS[k].label, tip: METHOD_TIP[k] }; });
+  (DATA.config.unavailableMethods || []).forEach(function (u) { ruleItems.push({ key: "_na_" + u.label, label: u.label, disabled: true, reason: u.reason }); });
+  var segRule = segmented(ruleItems, state.method, function (k) { state.method = k; render(); });
+  var segCost = segmented(BOUNDARY, state.boundary, function (k) { state.boundary = k; render(); });
+  var timingItems = DATA.config.timings.map(function (k) { return { key: k, label: TIMING[k], tip: TIMING_TIP[k] }; });
+  var segTiming = segmented(timingItems, state.timing, function (k) { state.timing = k; render(); });
+  controls.appendChild(ctrlRow("Rule", segRule));
+  controls.appendChild(ctrlRow("Cost", segCost));
+  if (DATA.config.timings.length > 1) controls.appendChild(ctrlRow("Timing", segTiming));
+
+  function setSeg(segEl, key) { segEl.querySelectorAll(".seg-btn").forEach(function (b) { b.classList.toggle("is-active", b.dataset.key === key); }); }
+  function syncControls() { setSeg(segRule, state.method); setSeg(segCost, state.boundary); setSeg(segTiming, state.timing); }
+
+  // slider over combos
+  var track = root.querySelector("[data-track]");
+  track.tabIndex = 0; track.setAttribute("role", "slider");
+  var sameCombo = function (c) { return c.method === state.method && c.boundary === state.boundary && c.timing === state.timing; };
+  var comboIndex = function () { for (var i = 0; i < combos.length; i++) if (sameCombo(combos[i])) return i; return -1; };
+  var applyCombo = function (c) { state.method = c.method; state.boundary = c.boundary; state.timing = c.timing; syncControls(); render(); };
+  var pickByEvent = function (e) {
+    if (!combos.length) return null;
+    var rect = track.getBoundingClientRect();
+    var f = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    var target = BAND.min + f * (BAND.max - BAND.min);
+    var best = combos[0], bd = Infinity;
+    combos.forEach(function (c) { var d = Math.abs(c.cac - target); if (d < bd) { bd = d; best = c; } });
+    return best;
+  };
+  var dragging = false;
+  track.addEventListener("pointerdown", function (e) { if (!combos.length) return; dragging = true; track.classList.add("is-dragging"); try { track.setPointerCapture(e.pointerId); } catch (x) {} var c = pickByEvent(e); if (c && !sameCombo(c)) applyCombo(c); e.preventDefault(); });
+  track.addEventListener("pointermove", function (e) { if (!dragging) return; var c = pickByEvent(e); if (c && !sameCombo(c)) applyCombo(c); });
+  track.addEventListener("pointerup", function () { dragging = false; track.classList.remove("is-dragging"); });
+  track.addEventListener("pointercancel", function () { dragging = false; track.classList.remove("is-dragging"); });
+  track.addEventListener("keydown", function (e) {
+    if (!combos.length) return;
+    var i = comboIndex(), last = combos.length - 1;
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") i = i < 0 ? 0 : Math.min(last, i + 1);
+    else if (e.key === "ArrowLeft" || e.key === "ArrowDown") i = i < 0 ? last : Math.max(0, i - 1);
+    else if (e.key === "Home") i = 0; else if (e.key === "End") i = last; else return;
+    e.preventDefault(); applyCombo(combos[i]);
+  });
+
+  // channel table - rows are buttons; clicking one makes it the focus channel
+  var chan = root.querySelector("[data-chan]");
+  var head = el("div", "chan-head");
+  head.innerHTML = "<span>Channel</span><span></span><span class='r'>Customers</span><span class='r'>Revenue</span><span class='r'>CAC</span>";
+  chan.appendChild(head);
+  var rows = {};
+  DATA.meta.channels.forEach(function (ch) {
+    var r = el("button", "chan-row"); r.type = "button"; r.dataset.channel = ch;
+    r.innerHTML = "<div class='chan-name'><span class='focus-dot'></span><span>" + ch + "</span></div>" +
+      "<div class='chan-track'><div class='chan-fill'></div></div><div class='chan-cust'></div><div class='chan-rev'></div><div class='chan-cac'></div>";
+    r.addEventListener("click", function () { if (state.focusChannel === ch) return; state.focusChannel = ch; recomputeBand(); render(); });
+    rows[ch] = r; chan.appendChild(r);
+  });
+  root.querySelector("[data-hint]").textContent =
+    "Click any channel to see its numbers. Faded channels have no cost on record yet - add a person or tool cost in the box above and they get a CAC too.";
+  root.querySelector("[data-note]").textContent = "Drag the slider or change any control.";
+
+  // cost editor: media is read-only (from the data); agency & people are editable
+  Array.prototype.forEach.call(root.querySelectorAll("[data-ce-cur]"), function (s) { s.textContent = CUR; });
+  var ceInputs = { media: root.querySelector('[data-ce="media"]'), agency: root.querySelector('[data-ce="agency"]'), people: root.querySelector('[data-ce="people"]') };
+  function syncCostEditor() {
+    root.querySelector("[data-ce-ch]").textContent = state.focusChannel;
+    Object.keys(ceInputs).forEach(function (key) {
+      if (document.activeElement !== ceInputs[key]) ceInputs[key].value = Math.round(editCost[state.focusChannel][key]) || 0;
+    });
+    var noteEl = root.querySelector("[data-ce-note]");
+    noteEl.textContent = (mediaMonthly(state.focusChannel) === 0 && !hasCost(state.focusChannel))
+      ? "No media on " + state.focusChannel + " - but if someone runs it, put their yearly cost in People and it gets a CAC."
+      : "";
+  }
+  Object.keys(ceInputs).forEach(function (key) {
+    ceInputs[key].addEventListener("input", function () {
+      var v = parseFloat(ceInputs[key].value);
+      editCost[state.focusChannel][key] = (isNaN(v) || v < 0) ? 0 : v;
+      recomputeBand(); render();
+    });
+  });
+
+  function render() {
+    var totals = ATTR.channelTotals(DATA.deals, state.method, DATA.meta.channels);
+    var maxC = Math.max.apply(null, DATA.meta.channels.map(function (x) { return totals.customers[x]; })) || 1;
+    // rank by customers, but partition: channels with a cost (a real CAC) first,
+    // costless ones last. Reorder via CSS `order` so DOM nodes never move.
+    var ranked = DATA.meta.channels.slice().sort(function (a, b) { return totals.customers[b] - totals.customers[a]; });
+    var withCost = ranked.filter(hasCost);
+    var without = ranked.filter(function (ch) { return !hasCost(ch); });
+    var ordered = withCost.concat(without);
+    ordered.forEach(function (ch, i) {
+      var r = rows[ch];
+      var noCost = !hasCost(ch);
+      r.style.order = String(i);
+      r.classList.toggle("is-secondary", noCost);                   // faded but still clickable
+      r.classList.toggle("is-nospend", noCost && ch === without[0]); // hairline above the first costless row
+      r.classList.toggle("is-vlast", i === ordered.length - 1);      // kill the border on the visually-last row
+      r.classList.toggle("is-focus", ch === state.focusChannel);
+      r.setAttribute("aria-pressed", String(ch === state.focusChannel));
+      r.querySelector(".chan-fill").style.width = (totals.customers[ch] / maxC) * 100 + "%";
+      r.querySelector(".chan-cust").textContent = num1(totals.customers[ch]);
+      r.querySelector(".chan-rev").textContent = moneyK(totals.revenue[ch]);
+      var chCac = cacFor(ch, state.method, state.boundary, state.timing); // this channel's CAC at the current cost/timing
+      var cacEl = r.querySelector(".chan-cac");
+      cacEl.textContent = chCac == null ? "n/a" : money(chCac);
+      cacEl.classList.toggle("na", chCac == null);
+    });
+
+    syncCostEditor();
+
+    var cost = boundariesFor(state.focusChannel, state.timing)[state.boundary];
+    var cust = customersFor(state.focusChannel, state.method);
+    var cac = (cust > 0 && cost > 0) ? cost / cust : null;
+    root.querySelector("[data-stat-spend]").textContent = cost > 0 ? money(cost) : (computable ? money(0) : "no cost");
+    root.querySelector("[data-stat-cust]").textContent = num1(totals.customers[state.focusChannel] || 0);
+    root.querySelector("[data-stat-rev]").textContent = money(totals.revenue[state.focusChannel] || 0);
+    var numEl = root.querySelector("[data-num]"), fEl = root.querySelector("[data-formula]");
+    var marker = root.querySelector("[data-marker]");
+    if (!computable) {
+      numEl.textContent = "n/a"; fEl.textContent = "No cost on record for " + state.focusChannel + " yet - add its media, or a person/tool cost, above.";
+      root.querySelector("[data-fill]").style.width = "0%"; marker.style.display = "none";
+      track.removeAttribute("aria-valuenow");
+    } else if (cac == null) {
+      marker.style.display = "";
+      numEl.textContent = "n/a";
+      fEl.textContent = cust <= 0 ? "No " + state.focusChannel + "-credited customers under this rule."
+        : "No cost at this boundary for " + state.focusChannel + " - try a wider one.";
+      root.querySelector("[data-fill]").style.width = "0%"; marker.style.left = "0%";
+      track.removeAttribute("aria-valuenow");
+    } else {
+      marker.style.display = "";
+      numEl.innerHTML = "<span class='cur'>" + CUR + "</span>" + Math.round(cac).toLocaleString("en-GB");
+      fEl.innerHTML = money(cost) + " <strong>" + C.div + "</strong> " + num1(cust) + " customers";
+      var p = bandPct(cac);
+      root.querySelector("[data-fill]").style.width = p + "%"; root.querySelector("[data-marker]").style.left = p + "%";
+      track.setAttribute("aria-valuenow", String(Math.round(cac)));
+      track.setAttribute("aria-valuetext", money(cac) + DASH + ATTR.METHODS[state.method].label + ", " + BLABEL[state.boundary] + ", " + TIMING[state.timing]);
+    }
+    buildCaveats(root.querySelector("[data-caveats]"));
+  }
+
+  function buildCaveats(host) {
+    var A = DATA.config.costAssumptions, t = DATA.config.timing;
+    var items = [];
+    items.push("<strong>" + DATA.meta.n_deals + " closed-won deals</strong> from " + (DATA.meta.source || "your data") + " (" + (DATA.meta.period || "period unknown") + ").");
+    items.push("Looking at <strong>" + state.focusChannel + "</strong>. Click another channel in the table to switch.");
+    items.push("Modelled over the <strong>" + MONTHS + "-month window</strong> your data spans - each cost is a monthly rate applied across those " + MONTHS + " months, matched to the customers closed in them. Edit any cost above to see the number move.");
+    items.push("Attribution rules available on this export: <strong>" + DATA.config.methods.join(", ") + "</strong>.");
+    (DATA.config.unavailableMethods || []).forEach(function (u) { items.push("<em>" + u.label + " unavailable</em> - " + u.reason); });
+    if (t && t.medianCycleDays != null) items.push("Median sales cycle " + t.medianCycleDays + " days, so the lag lever drops the last ~" + t.lagMonths + " months of spend.");
+    else items.push("No sales-cycle length in the export, so only same-period timing is offered.");
+    if (A) items.push("Fully-loaded cost adds agency (" + Math.round((A.retainerShare || 0) * 100) + "% of a " + money(A.retainerPerMonth || 0) + "/mo retainer), tooling and staff (" + Math.round((A.staffShare || 0) * 100) + "% of a " + money(A.staffPerMonth || 0) + "/mo person) - allocations you can argue with.");
+    items.push("<strong>Brand and dark social aren't here.</strong> This is activation spend you can trace; word of mouth and prior awareness sit outside any attribution number.");
+    host.innerHTML = "<ul>" + items.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul>";
+  }
+
+  recomputeBand();
+  render();
+})();
+</script>
