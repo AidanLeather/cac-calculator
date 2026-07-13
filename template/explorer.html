@@ -63,7 +63,7 @@
   .range-marker { position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%; background: var(--fill); border: 2px solid var(--panel); transform: translate(-50%,-50%); transition: left .12s ease; }
   .range-track.is-dragging .range-marker { transition: none; }
   .range-ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 8px; }
-  .cac-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 20px; }
+  .cac-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
   .cac-stat { background: var(--bg); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 10px 12px; }
   .cs-label { font-size: 11px; color: var(--ink-3); margin-bottom: 2px; }
   .cs-val { font-size: 16px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -103,7 +103,7 @@
   .cost-editor { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 18px; }
   .ce-head { font-size: 12px; color: var(--ink-3); margin-bottom: 10px; }
   .ce-head b { color: var(--ink); font-weight: 600; }
-  .ce-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .ce-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
   .ce-field { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--ink-3); }
   .ce-input { display: flex; align-items: center; gap: 4px; background: var(--bg); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 7px 9px; }
   .ce-input .ce-cur { color: var(--ink-3); font-size: 13px; }
@@ -118,6 +118,15 @@
   .aw-caveats summary { cursor: pointer; color: var(--ink-2); }
   .aw-caveats ul { margin: 8px 0 0; padding-left: 18px; }
   .aw-caveats li { margin: 3px 0; }
+  /* narrow screens: the cost inputs stack, and the stat figures shrink to fit */
+  @media (max-width: 560px) {
+    .aw-explorer { padding: 18px; }
+    .cac-panel { padding: 16px; }
+    .ce-grid { grid-template-columns: 1fr; }
+    .cac-stats { gap: 8px; }
+    .cac-stat { padding: 8px; }
+    .cs-val { font-size: 13px; }
+  }
 </style>
 
 <div class="aw-explorer">
@@ -142,7 +151,7 @@
     </div>
   </div>
   <div class="cost-editor">
-    <div class="ce-head">Cost for <b data-ce-ch></b> <span data-ce-sub>per month - edit to see the CAC move</span></div>
+    <div class="ce-head">Cost for <b data-ce-ch></b> <span data-ce-sub>per month&mdash;edit to see the CAC move</span></div>
     <div class="ce-grid">
       <label class="ce-field">Media (ad spend)
         <div class="ce-input"><span class="ce-cur" data-ce-cur></span><input type="number" min="0" step="500" data-ce="media" inputmode="numeric" /></div>
@@ -159,7 +168,6 @@
   <p class="chan-head-label">Credit by channel (under the current rule)</p>
   <div class="chan-list" data-chan></div>
   <p class="chan-hint" data-hint></p>
-  <p class="aw-note" data-note></p>
   <details class="aw-caveats"><summary data-cav-summary></summary><div data-caveats></div></details>
 </div>
 
@@ -374,7 +382,6 @@
   });
   root.querySelector("[data-hint]").textContent =
     "Click any channel to see its numbers. Faded channels have no cost on record yet - add a person or tool cost in the box above and they get a CAC too.";
-  root.querySelector("[data-note]").textContent = "Drag the slider or change any control.";
 
   // cost editor: media is read-only (from the data); agency & people are editable
   Array.prototype.forEach.call(root.querySelectorAll("[data-ce-cur]"), function (s) { s.textContent = CUR; });
