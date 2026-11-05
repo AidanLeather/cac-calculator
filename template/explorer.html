@@ -1,129 +1,154 @@
 <style>
-  /* Personalised CAC explorer - monochrome, DARK MODE ONLY. There is
-     deliberately no light palette and no theme-following: the explorer is
-     always dark, whatever the viewer's system/theme preference.
+  /* Personalised CAC explorer, in the same visual system as the write-up it
+     comes from (aidanleather.com/blog/calculating-cac): the explorer is a
+     SCREEN (near-black, one hairline, 14px radius), the boxes inside it lift
+     slightly, chips and controls are pills, colour marks the three controls.
+     DARK MODE ONLY: there is deliberately no light palette and no
+     theme-following; the explorer is always dark, whatever the viewer's
+     system/theme preference.
      Source is deliberately ASCII-only: every special glyph (pound, divide,
      times, dash) is produced at runtime via String.fromCharCode, so the page
-     can never mojibake regardless of how it is served. */
-  /* Colours are neutral OKLCH tokens - pure greys, no blue tint. */
+     can never mojibake regardless of how it is served.
+     Fonts: Uncut Sans is inlined at build time by scripts/build-explorer.js
+     (from template/fonts/); Geist Mono comes from Google Fonts. Both fall
+     back to system fonts if they can't load. */
+  @import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap");
+  @font-face { font-family: "Uncut Sans"; src: url(data:font/woff2;base64,/*{{FONT_SANS}}*/) format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
   /* Force the whole hosting page dark too, so the surface behind the explorer
      never renders white when the viewer prefers light. */
   :root { color-scheme: dark; background: oklch(0.162 0 0); }
-  body { background: oklch(0.162 0 0); }
+  body { background: oklch(0.162 0 0); margin: 0; padding: 16px; }
   .aw-explorer {
     color-scheme: dark;
-    --bg: oklch(0.162 0 0); --panel: oklch(0.196 0 0);
-    --line: oklch(1 0 0 / 0.10); --line-soft: oklch(1 0 0 / 0.055);
-    --ink: oklch(0.95 0 0); --ink-2: oklch(0.84 0 0); --ink-3: oklch(0.60 0 0);
-    --pill: oklch(0.285 0 0); --fill: oklch(0.95 0 0);
-    --radius: 10px; --radius-sm: 6px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    color: var(--ink-2); max-width: 720px; margin: 0 auto; line-height: 1.55;
+    --page: oklch(0.162 0 0); --screen: oklch(0.135 0 0); --paper: oklch(0.196 0 0);
+    --lift: oklch(1 0 0 / 0.045); --lift-2: oklch(1 0 0 / 0.07);
+    --line: oklch(1 0 0 / 0.09); --line-soft: oklch(1 0 0 / 0.055); --line-strong: oklch(1 0 0 / 0.18);
+    --ink: oklch(0.95 0 0); --ink-2: oklch(0.84 0 0); --ink-3: oklch(0.60 0 0); --ink-4: oklch(0.42 0 0);
+    --accent: oklch(0.72 0.14 259.8);
+    --c-rule: oklch(0.80 0.12 165); --c-cost: oklch(0.76 0.12 250); --c-timing: oklch(0.62 0.13 315);
+    --fill: oklch(0.95 0 0);
+    --r-sm: 6px; --r-md: 8px; --r-lg: 14px; --r-pill: 999px;
+    --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: "Uncut Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: var(--ink-2); max-width: 760px; margin: 0 auto; line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     /* Paint our own surface so the explorer is always self-consistent, whatever
        colour the host page happens to be behind it. */
-    background: var(--bg); padding: 24px; border-radius: var(--radius);
+    background: var(--screen); padding: 22px 24px; border-radius: var(--r-lg);
+    box-shadow: 0 0 0 1px var(--line);
   }
   .aw-explorer * { box-sizing: border-box; }
-  .aw-eyebrow { font-size: 11px; letter-spacing: .04em; color: var(--ink-3); margin-bottom: 6px; }
-  .aw-title { font-size: 19px; font-weight: 600; color: var(--ink); margin: 0 0 6px; letter-spacing: -.01em; }
-  .aw-sub { font-size: 14px; color: var(--ink-3); margin: 0 0 20px; }
-  .aw-controls { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+  .aw-head { margin-bottom: 20px; }
+  .aw-eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 11px var(--mono); color: var(--ink-3); margin-bottom: 10px; }
+  .aw-eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .aw-title { font-size: 20px; line-height: 1.25; font-weight: 650; color: var(--ink); margin: 0 0 6px; letter-spacing: -.015em; text-wrap: balance; }
+  .aw-sub { font-size: 14px; color: var(--ink-3); margin: 0; text-wrap: pretty; }
+  .aw-controls { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
   .ctrl-row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 12px; }
-  .ctrl-label { font-size: 12px; color: var(--ink-3); }
-  .segmented { display: flex; flex-wrap: wrap; gap: 4px; background: var(--bg); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 3px; }
-  .seg-btn { flex: 1 1 auto; border: 0; background: transparent; color: var(--ink-3); font: inherit; font-size: 12.5px;
-    padding: 6px 10px; border-radius: 4px; cursor: pointer; white-space: nowrap; transition: background .15s, color .15s; }
-  .seg-btn:hover { color: var(--ink-2); }
-  .seg-btn.is-active { background: var(--pill); color: var(--ink); }
+  .ctrl-label { font-size: 12px; font-weight: 500; color: var(--ink-3); }
+  .segmented { display: flex; flex-wrap: wrap; gap: 2px; width: fit-content; max-width: 100%; padding: 2px; border-radius: var(--r-pill); box-shadow: 0 0 0 1px var(--line); }
+  .seg-btn { flex: 0 1 auto; border: 0; background: transparent; color: var(--ink-3); font: inherit; font-size: 12.5px; font-weight: 500;
+    padding: 5px 12px; border-radius: var(--r-pill); cursor: pointer; white-space: nowrap; transition: background .15s, color .15s; }
+  .seg-btn:hover { color: var(--ink); }
+  .seg-btn.is-active { background: var(--lift-2); color: var(--ink); }
+  .seg-btn:focus-visible { outline: 1.5px solid var(--ink-3); outline-offset: 2px; }
+  /* A whisper of colour per control: the label carries its hue, and the
+     active pill picks up a faint tint and coloured ink. */
+  .ctrl-row--rule .ctrl-label { color: var(--c-rule); }
+  .ctrl-row--cost .ctrl-label { color: var(--c-cost); }
+  .ctrl-row--timing .ctrl-label { color: var(--c-timing); }
+  .ctrl-row--rule .seg-btn.is-active { color: var(--c-rule); background: color-mix(in oklch, var(--c-rule) 16%, transparent); }
+  .ctrl-row--cost .seg-btn.is-active { color: var(--c-cost); background: color-mix(in oklch, var(--c-cost) 16%, transparent); }
+  .ctrl-row--timing .seg-btn.is-active { color: var(--c-timing); background: color-mix(in oklch, var(--c-timing) 22%, transparent); }
   /* dim disabled labels with COLOUR, not opacity - opacity would also fade the
      tooltip pseudo-element and make it unreadable */
-  .seg-btn:disabled { color: color-mix(in oklch, var(--ink-3) 55%, transparent); cursor: not-allowed; }
+  .seg-btn:disabled { color: var(--ink-4); cursor: not-allowed; }
   /* hover tooltips explaining each control (rules, cost boundaries, timing) */
   .seg-btn[data-tip] { position: relative; }
   .seg-btn[data-tip]:hover::after, .seg-btn[data-tip]:focus-visible::after {
     content: attr(data-tip); position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
     width: max-content; max-width: 230px; padding: 7px 10px; text-align: left; white-space: normal;
-    background: var(--panel); color: var(--ink-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: var(--paper); color: var(--ink-2); border: 1px solid var(--line); border-radius: var(--r-md);
     font-size: 12px; line-height: 1.45; font-weight: 400; z-index: 6; pointer-events: none;
     box-shadow: 0 8px 24px rgba(0,0,0,.35); }
   .seg-btn[data-tip]:hover::before, .seg-btn[data-tip]:focus-visible::before {
     content: ""; position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%);
     border: 5px solid transparent; border-top-color: var(--line); z-index: 6; pointer-events: none; }
-  .cac-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; margin-bottom: 18px; }
+  .cac-panel { background: var(--lift); border-radius: var(--r-md); padding: 20px; margin-bottom: 16px; }
   .cac-label { font-size: 12px; color: var(--ink-3); margin-bottom: 4px; }
-  .cac-num { font-size: 44px; font-weight: 600; color: var(--ink); letter-spacing: -.02em; line-height: 1.05; }
+  .cac-num { font-size: 44px; font-weight: 600; color: var(--ink); letter-spacing: -.02em; line-height: 1.05; font-variant-numeric: tabular-nums; }
   .cac-num .cur { font-size: 26px; font-weight: 500; color: var(--ink-3); margin-right: 1px; }
   .cac-formula { font-size: 13px; color: var(--ink-3); margin-top: 6px; }
   .cac-formula strong { color: var(--ink-2); font-weight: 600; }
   .range { margin: 20px 0 6px; }
-  .range-track { position: relative; height: 6px; background: var(--bg); border: 1px solid var(--line-soft); border-radius: 999px; cursor: pointer; outline: none; }
+  .range-track { position: relative; height: 6px; background: var(--lift-2); border-radius: var(--r-pill); cursor: pointer; outline: none; }
   .range-track:focus-visible { box-shadow: 0 0 0 3px rgba(255,255,255,.18); }
-  .range-fill { position: absolute; top: 0; left: 0; height: 100%; background: var(--fill); border-radius: 999px; opacity: .35; }
-  .range-marker { position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%; background: var(--fill); border: 2px solid var(--panel); transform: translate(-50%,-50%); transition: left .12s ease; }
+  .range-fill { position: absolute; top: 0; left: 0; height: 100%; background: var(--fill); border-radius: var(--r-pill); opacity: .35; }
+  .range-marker { position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%; background: var(--fill); border: 3px solid var(--screen); transform: translate(-50%,-50%); transition: left .12s ease; }
   .range-track.is-dragging .range-marker { transition: none; }
-  .range-ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 8px; }
-  .cac-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
-  .cac-stat { background: var(--bg); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 10px 12px; }
+  .range-ticks { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--ink-3); margin-top: 10px; font-variant-numeric: tabular-nums; }
+  .cac-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 20px; }
+  .cac-stat { background: var(--lift); border-radius: var(--r-sm); padding: 10px 12px; }
   .cs-label { font-size: 11px; color: var(--ink-3); margin-bottom: 2px; }
   .cs-val { font-size: 16px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
   .chan-head-label { font-size: 12px; color: var(--ink-3); margin: 0 0 8px; }
   /* flex column so rows are reordered via the CSS `order` property - the DOM
      nodes never move, which avoids the focus-flicker you get from re-appending
      the button you just clicked. */
-  .chan-list { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
-  .chan-head, .chan-row { display: grid; grid-template-columns: 1.3fr 1.2fr .6fr .8fr .9fr; align-items: center; gap: 10px; padding: 9px 14px; }
-  .chan-head { font-size: 11px; color: var(--ink-3); border-bottom: 1px solid var(--line-soft); order: -1; }
+  .chan-list { display: flex; flex-direction: column; gap: 1px; }
+  .chan-head, .chan-row { display: grid; grid-template-columns: 1.3fr 1.2fr .6fr .8fr .9fr; align-items: center; gap: 10px; padding: 8px 10px; }
+  .chan-head { font-size: 11px; color: var(--ink-3); border-bottom: 1px solid var(--line); order: -1; margin-bottom: 4px; }
   .chan-row { border: 0; width: 100%; text-align: left; background: transparent; font: inherit; color: inherit;
-    border-bottom: 1px solid var(--line-soft); font-size: 13px; cursor: pointer; transition: background .12s; }
-  .chan-row.is-vlast { border-bottom: 0; }
+    border-radius: var(--r-sm); font-size: 13px; cursor: pointer; transition: background .12s; }
   /* hover must NOT out-specify .is-focus, or the focused row shows the faint
      hover bg while hovered and pops to the solid bg on mouse-out (the "flash") */
-  .chan-row:not(.is-focus):hover { background: rgba(255,255,255,.04); }
-  .chan-row.is-focus { background: var(--pill); }
+  .chan-row:not(.is-focus):hover { background: var(--lift); }
+  .chan-row.is-focus { background: var(--lift-2); }
   .chan-row:focus-visible { outline: none; box-shadow: inset 0 0 0 2px rgba(255,255,255,.22); }
   /* channels with no paid media: still clickable, but faded and sunk to the
      bottom - they show credit only, so people are pushed to the paid ones */
   .chan-row.is-secondary { opacity: .5; }
   .chan-row.is-secondary:hover { opacity: .78; }
   .chan-row.is-secondary.is-focus { opacity: 1; }
-  .chan-row.is-nospend { border-top: 1px solid var(--line-soft); }
+  .chan-row.is-nospend { margin-top: 6px; }
   .chan-name { color: var(--ink-2); display: flex; align-items: center; gap: 7px; }
   .chan-row.is-focus .chan-name { color: var(--ink); font-weight: 600; }
   .focus-dot { width: 6px; height: 6px; border-radius: 50%; background: transparent; border: 1.5px solid var(--ink-3); flex: none; transition: background .12s, border-color .12s; }
   .chan-row.is-focus .focus-dot { background: var(--fill); border-color: var(--fill); }
-  .chan-track { height: 5px; background: var(--bg); border-radius: 999px; overflow: hidden; }
-  .chan-fill { height: 100%; background: var(--fill); opacity: .5; border-radius: 999px; transition: width .3s ease; }
-  .chan-row.is-focus .chan-fill { opacity: .8; }
+  .chan-track { height: 5px; background: var(--lift-2); border-radius: var(--r-pill); overflow: hidden; }
+  .chan-fill { height: 100%; background: var(--fill); opacity: .5; border-radius: var(--r-pill); transition: width .3s ease; }
+  .chan-row.is-focus .chan-fill { opacity: .85; }
   .chan-cust, .chan-rev { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
   .chan-cac { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
   .chan-cac.na { color: var(--ink-3); font-weight: 400; }
   .r { text-align: right; }
   /* editable per-channel cost box */
-  .cost-editor { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 18px; }
+  .cost-editor { background: var(--lift); border-radius: var(--r-md); padding: 14px 16px; margin-bottom: 20px; }
   .ce-head { font-size: 12px; color: var(--ink-3); margin-bottom: 10px; }
   .ce-head b { color: var(--ink); font-weight: 600; }
-  .ce-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .ce-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .ce-field { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--ink-3); }
-  .ce-input { display: flex; align-items: center; gap: 4px; background: var(--bg); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 7px 9px; }
+  .ce-input { display: flex; align-items: center; gap: 4px; height: 36px; background: var(--screen); box-shadow: inset 0 0 0 1px var(--line); border-radius: var(--r-pill); padding: 0 14px; transition: box-shadow .15s; }
+  .ce-input:focus-within { box-shadow: inset 0 0 0 1px var(--ink-3); }
   .ce-input .ce-cur { color: var(--ink-3); font-size: 13px; }
   .ce-input input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 14px; font-variant-numeric: tabular-nums; outline: none; -moz-appearance: textfield; }
   .ce-input input::-webkit-outer-spin-button, .ce-input input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .ce-field.is-readonly .ce-input { opacity: .7; }
   .ce-field.is-readonly .ce-input input { color: var(--ink-3); }
   .ce-note { font-size: 11.5px; color: var(--ink-3); margin: 9px 0 0; }
-  .chan-hint { font-size: 12px; color: var(--ink-3); margin: 8px 0 0; }
+  .chan-hint { font-size: 12px; color: var(--ink-3); margin: 10px 0 0; }
   .aw-note { font-size: 12.5px; color: var(--ink-3); margin: 14px 0 0; }
-  .aw-caveats { margin-top: 14px; font-size: 12.5px; color: var(--ink-3); }
+  .aw-caveats { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line-soft); font-size: 12.5px; color: var(--ink-3); }
   .aw-caveats summary { cursor: pointer; color: var(--ink-2); }
   .aw-caveats ul { margin: 8px 0 0; padding-left: 18px; }
   .aw-caveats li { margin: 3px 0; }
   /* narrow screens: the cost inputs stack, and the stat figures shrink to fit */
   @media (max-width: 560px) {
-    .aw-explorer { padding: 18px; }
+    body { padding: 0; }
+    .aw-explorer { padding: 16px; border-radius: 12px; }
+    .ctrl-row { grid-template-columns: 1fr; gap: 6px; }
     .cac-panel { padding: 16px; }
     .ce-grid { grid-template-columns: 1fr; }
-    .cac-stats { gap: 8px; }
     .cac-stat { padding: 8px; }
     .cs-val { font-size: 13px; }
   }
@@ -151,7 +176,7 @@
     </div>
   </div>
   <div class="cost-editor">
-    <div class="ce-head">Cost for <b data-ce-ch></b> <span data-ce-sub>per month&mdash;edit to see the CAC move</span></div>
+    <div class="ce-head">Cost for <b data-ce-ch></b> <span data-ce-sub>per month: edit to see the CAC move</span></div>
     <div class="ce-grid">
       <label class="ce-field">Media (ad spend)
         <div class="ce-input"><span class="ce-cur" data-ce-cur></span><input type="number" min="0" step="500" data-ce="media" inputmode="numeric" /></div>
@@ -182,7 +207,6 @@
   // Every non-ASCII glyph produced at runtime, so the source stays pure ASCII.
   var G = { pound: 163, euro: 8364, dollar: 36, div: 247, times: 215, dash: 8212 };
   var C = {}; Object.keys(G).forEach(function (k) { C[k] = String.fromCharCode(G[k]); });
-  var DASH = " " + C.dash + " ";
 
   var CUR = DATA.meta.currency === "USD" ? C.dollar : DATA.meta.currency === "EUR" ? C.euro : C.pound;
   var money = function (n) { return CUR + Math.round(n).toLocaleString("en-GB"); };
@@ -323,7 +347,7 @@
     });
     return wrap;
   }
-  function ctrlRow(label, seg) { var r = el("div", "ctrl-row"); r.appendChild(el("span", "ctrl-label", label)); r.appendChild(seg); return r; }
+  function ctrlRow(label, seg) { var r = el("div", "ctrl-row ctrl-row--" + label.toLowerCase()); r.appendChild(el("span", "ctrl-label", label)); r.appendChild(seg); return r; }
 
   var ruleItems = DATA.config.methods.map(function (k) { return { key: k, label: ATTR.METHODS[k].label, tip: METHOD_TIP[k] }; });
   (DATA.config.unavailableMethods || []).forEach(function (u) { ruleItems.push({ key: "_na_" + u.label, label: u.label, disabled: true, reason: u.reason }); });
@@ -459,7 +483,7 @@
       var p = bandPct(cac);
       root.querySelector("[data-fill]").style.width = p + "%"; root.querySelector("[data-marker]").style.left = p + "%";
       track.setAttribute("aria-valuenow", String(Math.round(cac)));
-      track.setAttribute("aria-valuetext", money(cac) + DASH + ATTR.METHODS[state.method].label + ", " + BLABEL[state.boundary] + ", " + TIMING[state.timing]);
+      track.setAttribute("aria-valuetext", money(cac) + ", " + ATTR.METHODS[state.method].label + ", " + BLABEL[state.boundary] + ", " + TIMING[state.timing]);
     }
     buildCaveats(root.querySelector("[data-caveats]"));
   }

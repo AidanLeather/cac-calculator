@@ -173,7 +173,12 @@ function build(dataset, templatePath, enginePath, opts) {
   var template = fs.readFileSync(templatePath, "utf8");
   var engine = fs.readFileSync(enginePath, "utf8");
   var embedded = opts.keepPII ? dataset : minifyForPublish(dataset);
+  // Uncut Sans, inlined so the explorer looks the same wherever it's opened
+  // (Artifacts only load fonts from Google Fonts). Missing file: system font.
+  var fontPath = path.join(path.dirname(templatePath), "fonts", "UncutSans-Variable.woff2");
+  var font = fs.existsSync(fontPath) ? fs.readFileSync(fontPath).toString("base64") : "";
   return template
+    .replace("/*{{FONT_SANS}}*/", function () { return font; })
     .replace("/*{{ENGINE}}*/", function () { return engine; })
     .replace("/*{{DATA}}*/", function () { return JSON.stringify(embedded); });
 }
